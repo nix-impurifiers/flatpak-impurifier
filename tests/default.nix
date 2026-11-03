@@ -4,6 +4,7 @@
   impurifier,
   coreSrc,
   tools,
+  bundled ? false,
 }:
 let
   app = pkgs.writeShellScriptBin "flatpak-app" "echo nix-in-flatpak" // {
@@ -74,6 +75,7 @@ let
   rooted = pkgs.writeText "flatpak-foreign-root-probe" "native GC chain";
 in
 {
+  native-payload-vm = import ./native-payload-vm.nix { inherit pkgs impurifier; };
   native-vm = pkgs.testers.runNixOSTest {
     name = "flatpak-native-contract";
     requiredFeatures = {
@@ -137,6 +139,7 @@ in
 
       succeed("flatpak remote-add --user --no-gpg-verify impurifiers file:///home/consumer/bundle/repository")
       succeed("flatpak install --user --noninteractive impurifiers io.github.nix_impurifiers.Application")
+      ${pkgs.lib.optionalString bundled ''succeed("dbus-run-session -- flatpak run --command=/usr/bin/sh io.github.nix_impurifiers.Application -c 'test -x /app/nix-store && ! command -v nix-store'")''}
       location = succeed("flatpak info --user --show-location io.github.nix_impurifiers.Application").strip()
       checksum = machine.succeed("find " + shlex.quote(location) + " -type f -exec sha256sum {} + | sort")
       machine.fail("su - consumer -c 'flatpak-impurifier prepare io.github.nix_impurifiers.Application'")

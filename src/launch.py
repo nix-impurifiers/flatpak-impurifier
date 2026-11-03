@@ -12,7 +12,16 @@ from pathlib import Path
 metadata = configparser.ConfigParser()
 metadata.read('/.flatpak-info')
 config = json.loads(Path('/app/application.json').read_text())
-os.environ['PATH'] = config['nixBin'] + ':' + os.environ.get('PATH', '')
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location('engine', '/app/engine.py')
+engine = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(engine)
+if Path('/app/nix-store').is_file():
+    os.environ.setdefault('IMPURIFIER_BUNDLED_NIX_STORE', '/app/nix-store')
+elif config.get('nixBin'):
+    os.environ.setdefault('IMPURIFIER_BUNDLED_NIX_STORE', config['nixBin'] + '/nix-store')
+client = engine.select_nix_store()
+os.environ['IMPURIFIER_NIX_STORE'] = client
 helper = config['registerRoot']
 for kind, local in [('runtime', '/usr'), ('app', '/app')]:
     host = metadata['Instance'][kind + '-path']
@@ -21,9 +30,6 @@ program = str(Path('/app/nix-root').resolve() / 'bin' / config['program'])
 environment = os.environ.copy()
 if config.get('hardware'):
     sys.dont_write_bytecode = True
-    spec = importlib.util.spec_from_file_location('engine', '/app/engine.py')
-    engine = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(engine)
     deployment = metadata['Instance']['app-path']
     state = Path(os.environ['XDG_DATA_HOME']) / 'flatpak-impurifier' / hashlib.sha256(deployment.encode()).hexdigest()
     state.mkdir(parents=True, exist_ok=True)
@@ -35,7 +41,7 @@ if config.get('hardware'):
     with (state / 'lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         snapshot = engine.hardware_snapshots([manifest], state)['flatpak-hardware']
-        subprocess.run(['nix-store', '--realise', snapshot, '--add-root', str(state / ('library-' + hashlib.sha256(snapshot.encode()).hexdigest())), '--indirect'], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([client, '--realise', snapshot, '--add-root', str(state / ('library-' + hashlib.sha256(snapshot.encode()).hexdigest())), '--indirect'], check=True, stdout=subprocess.DEVNULL)
     environment['LD_LIBRARY_PATH'] = snapshot + (':' + environment['LD_LIBRARY_PATH'] if environment.get('LD_LIBRARY_PATH') else '')
     if bridge.get('preload'):
         environment['LD_PRELOAD'] = ' '.join(snapshot + '/' + name for name in bridge['preload'])

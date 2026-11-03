@@ -66,3 +66,25 @@ They verify immutable root registration, sandbox execution, GC retention and
 native removal. System installations, remote signing, GUI portals and service integration
 remain additional coverage. Native updates, unsigned-cache rejection, unchanged
 deployment checksums and host-library replacement are covered by the VM suite.
+
+## Native app trees and bundled clients
+
+`makeNativeApplication { id; payload; program; runtimeRef; branch?; architecture?; permissions?; }`
+exports a native application repository and bundle from a producer-prepared `/app`
+tree. Supply the runtime reference explicitly and make it available to consumers.
+This path adds no Nix SDK, launcher, daemon access or `/nix` permission. The
+producer supplies files that work in the chosen runtime; binaries are not relocated.
+The native sandbox VM installs, executes, upgrades and removes the application,
+checking the absence of a Nix client, socket, database and engine launcher.
+
+Nix-backed application constructors optionally accept `bundledNixStore` and
+`bundledNixNotices` for a static ELF client with upstream notices. Their private
+runtime retains Python and the immutable-root registration API; the Nix CLI is
+private to the app. Compatible external clients take precedence, explicit
+`IMPURIFIER_NIX_STORE` disables fallback, and failed mutations are never retried
+through another client. A bundled variant repeats the existing lifecycle suite
+without an external Nix client on the sandbox PATH.
+
+Nix-backed applications still require their host store/daemon, permissions and
+initial trusted preparation. Preparation never executes a user-owned client
+as root. The Nix provider/installer remains deferred.
